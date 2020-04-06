@@ -10,7 +10,11 @@ def parse_zk_string(zk_string):
     """
     idx = zk_string.find("/")
     if idx == -1:
-        raise Exception("Invalid Zookeeper connect string")
+        print(f"Usage: python3 {basename(__file__)} host:port/root /path/to/export")
+        raise NotADirectoryError(
+            """No directory provided. Please add / after
+        the port if you wish to start from the root"""
+        )
     return (zk_string[:idx], zk_string[idx:])
 
 
@@ -19,7 +23,13 @@ def get_args():
     if len(sys.argv) != 3:
         print(f"Usage: python3 {basename(__file__)} host:port/root /path/to/export")
         raise IndexError("Wrong number of arguments")
-    host, zk_path = parse_zk_string(sys.argv[1])
+
+    try:
+        host, zk_path = parse_zk_string(sys.argv[1])
+    except NotADirectoryError as err:
+        ErrorCodes.make_graceful(err)
+        sys.exit(ErrorCodes.NOT_A_DIRECTORY.value)
+
     destination = sys.argv[2]
     return (host, zk_path, destination)
 

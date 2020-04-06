@@ -4,9 +4,13 @@ import sys
 import orjson
 from kazoo.client import KazooClient
 from kazoo.handlers.threading import KazooTimeoutError
+from kazoo.exceptions import NoNodeError
 from loguru import logger
 
 from ErrorCodes import ErrorCodes
+
+
+logger.add("ZkTreeExport.log", level="INFO", rotation="200 MB")
 
 
 class Icon:
@@ -66,7 +70,7 @@ class ZkTreeExport:
             if not parent_directory:
                 parent_directory = "."
             if not os.access(parent_directory, os.W_OK):
-                raise PermissionError("No permission to write in this directory")
+                raise PermissionError("Directory does not exist")
 
     def recursive_traversal(self, root: str) -> dict:
         self.id += 1
@@ -79,7 +83,7 @@ class ZkTreeExport:
 
         branches = []
         for child in children:
-            new_root = f"{self.root}/{child}"
+            new_root = f"{root}/{child}"
             partial_result = self.recursive_traversal(new_root)
             branches.append(partial_result)
 
@@ -90,7 +94,11 @@ class ZkTreeExport:
         return file_dict
 
     def get_node_data(self, path):
-        data, _ = self.zk_client.get(path)
+        try:
+            data, _ = self.zk_client.get(path)
+        except NoNodeError as err:
+            ErrorCodes.make_graceful(err)
+            sys.exit(ErrorCodes.NO_NODE.value)
         return data.decode("utf-8").replace("\n", "<br>")
 
     @staticmethod
