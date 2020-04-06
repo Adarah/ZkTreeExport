@@ -78,8 +78,9 @@ class ZkTreeExport:
         if not children:  # object has no children
             return file_dict
 
-        # appends root's path to children filenames
-        branches = map(partial(sum, root), children)
+        # appends root's path to children filenames. Map is a generator, so it
+        # has to be converted to list
+        branches = list(map(partial(sum, root), children))
         file_dict['children'] = branches
         file_dict['icon'] = Icon.FOLDER
         if file_id == 1:
@@ -101,6 +102,8 @@ class ZkTreeExport:
         }
 
     def to_json(self):
+        logger.info("Beginning tree traversal")
         result = self.recursive_traversal(self.root)
+        logger.info("Beginning JSON dumping")
         with open(self.destination, "wb") as f:
             f.write(orjson.dumps(result))
