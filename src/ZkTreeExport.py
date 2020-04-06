@@ -1,13 +1,12 @@
 import os
 import sys
 
+import orjson
 from kazoo.client import KazooClient
 from kazoo.handlers.threading import KazooTimeoutError
-from functools import partial
-import orjson
+from loguru import logger
 
 from ErrorCodes import ErrorCodes
-from loguru import logger
 
 
 class Icon:
@@ -47,8 +46,8 @@ class ZkTreeExport:
         try:
             zk_client.start()
             logger.info("Zookeeper connection established")
-        except KazooTimeoutError:
-            ErrorCodes.make_graceful()
+        except KazooTimeoutError as err:
+            ErrorCodes.make_graceful(err)
             sys.exit(ErrorCodes.KAZOO_TIMEOUT.value)
         return zk_client
 
@@ -57,7 +56,7 @@ class ZkTreeExport:
         if os.path.exists(destination):
             if os.path.isdir(destination):
                 raise IsADirectoryError(
-                    "Trying to write to a directory. Please provide a file name instead."
+                    "Trying to write to a directory. Please provide a filename instead."
                 )
             if not os.access(destination, os.W_OK):
                 raise PermissionError("No permission to write in that file")
@@ -78,11 +77,14 @@ class ZkTreeExport:
         if not children:  # object has no children
             return file_dict
 
-        # appends root's path to children filenames. Map is a generator, so it
-        # has to be converted to list
-        branches = list(map(partial(sum, root), children))
-        file_dict['children'] = branches
-        file_dict['icon'] = Icon.FOLDER
+        branches = []
+        for child in children:
+            new_root = f"{self.root}/{child}"
+            partial_result = self.recursive_traversal(new_root)
+            branches.append(partial_result)
+
+        file_dict["children"] = branches
+        file_dict["icon"] = Icon.FOLDER
         if file_id == 1:
             file_dict["state"] = {"opened": True}
         return file_dict
