@@ -1,8 +1,10 @@
 import os
+import time
 import sys
 
 import orjson
 from kazoo.client import KazooClient
+from kazoo.interfaces import IAsyncResult
 from kazoo.handlers.threading import KazooTimeoutError
 from kazoo.exceptions import NoNodeError
 from kazoo.handlers.gevent import SequentialGeventHandler
@@ -79,11 +81,10 @@ class ZkTreeExport:
         file_id = self.id
         async_data = self.zk_client.get_async(root)
         async_children = self.zk_client.get_children_async(root)
-        # data = self.get_node_data(root)
-        hello = async_data.get()
-        print(hello)
-        break
-        children = self.zk_client.get_children(root)
+        data = self.get_async_node_data(async_data)
+        # hello = async_data.get()
+        # children = self.zk_client.get_children(root)
+        children = async_children.get()
         file_dict = ZkTreeExport.create_dict_r(root, children, data, Icon.FILE, file_id)
         if not children:  # object has no children
             return file_dict
@@ -108,6 +109,14 @@ class ZkTreeExport:
             sys.exit(ErrorCodes.NO_NODE.value)
         return data.decode("utf-8").replace("\n", "<br>")
 
+    def get_async_node_data(self, async_data: IAsyncResult) -> str:
+        try:
+            data, _ = async_data.get()
+        except NoNodeError as err:
+            ErrorCodes.make_graceful(err)
+            sys.exit(ErrorCodes.NO_NODE.value)
+        return data.decode("utf-8").replace("\n", "<br>")
+
     @staticmethod
     def create_dict_r(path, children, data="", icon=Icon.FILE, id=None):
         return {
@@ -120,7 +129,10 @@ class ZkTreeExport:
 
     def to_json(self):
         logger.info("Beginning tree traversal")
+        tick = time.perf_counter()
         result = self.recursive_traversal(self.root)
+        tock = time.perf_counter()
+        logger.info(f"Took {(tock - tick):.3f}s to traverse {self.id} nodes")
         logger.info("Beginning JSON dumping")
         with open(self.destination, "wb") as f:
             f.write(orjson.dumps(result))
