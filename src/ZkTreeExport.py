@@ -5,11 +5,12 @@ import orjson
 from kazoo.client import KazooClient
 from kazoo.handlers.threading import KazooTimeoutError
 from kazoo.exceptions import NoNodeError
+from kazoo.handlers.gevent import SequentialGeventHandler
 from loguru import logger
 
 from ErrorCodes import ErrorCodes
 
-
+logger.remove()
 logger.add("ZkTreeExport.log", level="INFO", rotation="200 MB")
 
 
@@ -46,9 +47,10 @@ class ZkTreeExport:
     @staticmethod
     def start_kazoo(host: str) -> KazooClient:
         """Starts a connection to the Zookeeper client"""
-        zk_client = KazooClient(hosts=host)
+        zk_client = KazooClient(hosts=host, handler=SequentialGeventHandler())
         try:
-            zk_client.start()
+            zk_client.start_async()
+            zk_client.wait(timeout=10)
             logger.info("Zookeeper connection established")
         except KazooTimeoutError as err:
             ErrorCodes.make_graceful(err)
@@ -75,7 +77,12 @@ class ZkTreeExport:
     def recursive_traversal(self, root: str) -> dict:
         self.id += 1
         file_id = self.id
-        data = self.get_node_data(root)
+        async_data = self.zk_client.get_async(root)
+        async_children = self.zk_client.get_children_async(root)
+        # data = self.get_node_data(root)
+        hello = async_data.get()
+        print(hello)
+        break
         children = self.zk_client.get_children(root)
         file_dict = ZkTreeExport.create_dict_r(root, children, data, Icon.FILE, file_id)
         if not children:  # object has no children

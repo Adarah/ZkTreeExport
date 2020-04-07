@@ -10,10 +10,10 @@ def parse_zk_string(zk_string):
     """
     idx = zk_string.find("/")
     if idx == -1:
-        print(f"Usage: python3 {basename(__file__)} host:port/root /path/to/export")
+        print(f"\nUsage: python3 {basename(__file__)} host:port/root /path/to/export")
         raise NotADirectoryError(
-            """No directory provided. Please add / after
-        the port if you wish to start from the root"""
+            """No directory provided. Please add / after\n
+the port if you wish to start from the root"""
         )
     return (zk_string[:idx], zk_string[idx:])
 
@@ -21,7 +21,7 @@ def parse_zk_string(zk_string):
 def get_args():
     # TODO: Implement argument parsing for future options
     if len(sys.argv) != 3:
-        print(f"Usage: python3 {basename(__file__)} host:port/root /path/to/export")
+        print(f"\nUsage: python3 {basename(__file__)} host:port/root /path/to/export")
         raise IndexError("Wrong number of arguments")
 
     try:

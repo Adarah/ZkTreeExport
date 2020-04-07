@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from loguru import logger
 
-logger.add("ZkTreeExport.log", level="INFO", rotation="200 MB")
+
 @unique
 class ErrorCodes(Enum):
     NOT_IMPLEMENTED = 255
