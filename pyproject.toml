@@ -10,6 +10,8 @@ orjson = "^2.6.3"
 kazoo = "^2.7.0"
 loguru = "^0.4.1"
 gevent = "^1.4.0"
+eventlet = "^0.25.1"
+trio = "^0.13.0"
 
 [tool.poetry.dev-dependencies]
 flake8 = "^3.7.9"

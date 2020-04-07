@@ -1,16 +1,15 @@
 import os
-from functools import partialmethod
-import time
 import sys
+import time
+from typing import List
 
 import orjson
+import trio
 from kazoo.client import KazooClient
-from kazoo.interfaces import IAsyncResult
-from kazoo.handlers.threading import KazooTimeoutError
 from kazoo.exceptions import NoNodeError
-from kazoo.handlers.gevent import SequentialGeventHandler
+from kazoo.handlers.threading import KazooTimeoutError
+from kazoo.interfaces import IAsyncResult
 from loguru import logger
-from concurrent.futures import ProcessPoolExecutor
 
 from ErrorCodes import ErrorCodes
 
@@ -51,9 +50,9 @@ class ZkTreeExport:
     @staticmethod
     def start_kazoo(host: str) -> KazooClient:
         """Starts a connection to the Zookeeper client"""
-        zk_client = KazooClient(hosts=host, handler=SequentialGeventHandler())
+        zk_client = KazooClient(hosts=host)
         try:
-            event = zk_client.start_async()
+            event = zk_client.async_start()
             event.wait(timeout=10)
             logger.info("Zookeeper connection established")
         except KazooTimeoutError as err:
@@ -78,9 +77,9 @@ class ZkTreeExport:
             if not os.access(parent_directory, os.W_OK):
                 raise PermissionError("Directory does not exist")
 
-    def recursive_traversal_process(self, root: str) -> dict:
+    async def recursive_traversal(self, root: str, result: List[dict]) -> None:
         async_data = self.zk_client.get_async(root)
-        async_children = self.zk_client.get_children_async(root)
+        async_children = self.zk_client.get_async(root)
 
         self.id += 1
         file_id = self.id
@@ -88,45 +87,21 @@ class ZkTreeExport:
         children = async_children.get()
         file_dict = ZkTreeExport.create_dict_r(root, children, data, Icon.FILE, file_id)
         if not children:  # object has no children
-            return file_dict
+            result.append(file_dict)
+            return None
 
         branches = []
-        for child in children:
-            new_root = f"{root}/{child}"
-            partial_result = self.recursive_traversal(new_root)
-            branches.append(partial_result)
+        async with trio.open_nursery() as nursery:
+            for child in children:
+                new_root = f"{root}/{child}"
+                nursery.start_soon(new_root, branches)
 
         file_dict["children"] = branches
         file_dict["icon"] = Icon.FOLDER
         if file_id == 1:
             file_dict["state"] = {"opened": True}
-        return file_dict
-
-    def recursive_traversal(self) -> dict:
-        async_data = self.zk_client.get_async(self.root)
-        async_children = self.zk_client.get_children_async(self.root)
-
-        self.id += 1
-        file_id = self.id
-        data = self.get_async_node_data(async_data)
-        children = async_children.get()
-        file_dict = ZkTreeExport.create_dict_r(
-            self.root, children, data, Icon.FILE, file_id
-        )
-        if not children:  # object has no children
-            return file_dict
-
-        branches = []
-        with ProcessPoolExecutor as executor:
-            branches = executor.map(
-                partialmethod(self.recursive_traversal_process, self.root)
-            )
-
-        file_dict["children"] = branches
-        file_dict["icon"] = Icon.FOLDER
-        if file_id == 1:
-            file_dict["state"] = {"opened": True}
-        return file_dict
+        result.append(file_dict)
+        return None
 
     def get_async_node_data(self, async_data: IAsyncResult) -> str:
         try:
@@ -146,14 +121,11 @@ class ZkTreeExport:
             "id": id,
         }
 
-    def start_process(self, root: str, child: str) -> dict:
-        path = "/".join(root, child)
-        return self.recursive_traversal_process(path)
-
     def to_json(self):
         logger.info("Beginning tree traversal")
         tick = time.perf_counter()
-        result = self.recursive_traversal(self.root)
+        result = []
+        trio.run(self.recursive_traversal(self.root, result))
         tock = time.perf_counter()
         logger.info(f"Took {(tock - tick):.3f}s to traverse {self.id} nodes")
         logger.info("Beginning JSON dumping")
