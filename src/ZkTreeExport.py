@@ -1,5 +1,4 @@
 import os
-from functools import partialmethod
 import time
 import sys
 
@@ -8,9 +7,7 @@ from kazoo.client import KazooClient
 from kazoo.interfaces import IAsyncResult
 from kazoo.handlers.threading import KazooTimeoutError
 from kazoo.exceptions import NoNodeError
-from kazoo.handlers.gevent import SequentialGeventHandler
 from loguru import logger
-from concurrent.futures import ProcessPoolExecutor
 
 from ErrorCodes import ErrorCodes
 
@@ -51,7 +48,7 @@ class ZkTreeExport:
     @staticmethod
     def start_kazoo(host: str) -> KazooClient:
         """Starts a connection to the Zookeeper client"""
-        zk_client = KazooClient(hosts=host, handler=SequentialGeventHandler())
+        zk_client = KazooClient(hosts=host)
         try:
             event = zk_client.start_async()
             event.wait(timeout=10)
@@ -78,7 +75,7 @@ class ZkTreeExport:
             if not os.access(parent_directory, os.W_OK):
                 raise PermissionError("Directory does not exist")
 
-    def recursive_traversal_process(self, root: str) -> dict:
+    def recursive_traversal(self, root: str) -> dict:
         async_data = self.zk_client.get_async(root)
         async_children = self.zk_client.get_children_async(root)
 
@@ -95,32 +92,6 @@ class ZkTreeExport:
             new_root = f"{root}/{child}"
             partial_result = self.recursive_traversal(new_root)
             branches.append(partial_result)
-
-        file_dict["children"] = branches
-        file_dict["icon"] = Icon.FOLDER
-        if file_id == 1:
-            file_dict["state"] = {"opened": True}
-        return file_dict
-
-    def recursive_traversal(self) -> dict:
-        async_data = self.zk_client.get_async(self.root)
-        async_children = self.zk_client.get_children_async(self.root)
-
-        self.id += 1
-        file_id = self.id
-        data = self.get_async_node_data(async_data)
-        children = async_children.get()
-        file_dict = ZkTreeExport.create_dict_r(
-            self.root, children, data, Icon.FILE, file_id
-        )
-        if not children:  # object has no children
-            return file_dict
-
-        branches = []
-        with ProcessPoolExecutor as executor:
-            branches = executor.map(
-                partialmethod(self.recursive_traversal_process, self.root)
-            )
 
         file_dict["children"] = branches
         file_dict["icon"] = Icon.FOLDER
@@ -146,10 +117,6 @@ class ZkTreeExport:
             "id": id,
         }
 
-    def start_process(self, root: str, child: str) -> dict:
-        path = "/".join(root, child)
-        return self.recursive_traversal_process(path)
-
     def to_json(self):
         logger.info("Beginning tree traversal")
         tick = time.perf_counter()
@@ -159,4 +126,4 @@ class ZkTreeExport:
         logger.info("Beginning JSON dumping")
         with open(self.destination, "wb") as f:
             f.write(orjson.dumps(result))
-        logger.info("File successfully writen to {self.destination}")
+        logger.info(f"File successfully writen to {self.destination}")
