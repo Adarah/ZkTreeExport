@@ -15,8 +15,8 @@ class ErrorCodes(Enum):
     NO_NODE = 6
 
     @staticmethod
-    def make_graceful(ex: Exception):
+    def make_graceful(ex: Exception, cause: str):
         error_id = uuid4()
         logger.exception(error_id)
         octet = str(error_id)[:8]
-        print(f"""It seems an error has occurred.\n{ex}\nError id: {octet}""")
+        print(f"""An error has occurred: {cause}.\n{ex}\nError id: {octet}""")

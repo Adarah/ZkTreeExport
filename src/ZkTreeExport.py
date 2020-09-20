@@ -29,32 +29,33 @@ class ZkTreeExport:
         self.id = 0  # subject to removal
 
     @classmethod
-    def new(cls, host: str, zk_root: str, destination: str) -> "ZkTreeExport":
+    def new(cls, host: str, zk_root: str, credentials: str, destination: str) -> "ZkTreeExport":
         """Initializes a ZkTreeObject, performing various tests"""
         instance = cls(zk_root, destination)
-        instance.zk_client = ZkTreeExport.start_kazoo(host)
+        instance.zk_client = ZkTreeExport.start_kazoo(host, credentials)
         try:
             ZkTreeExport.test_write_permission(destination)
             logger.debug("Write permission successful.")
         except IsADirectoryError as err:
-            ErrorCodes.make_graceful(err)
+            ErrorCodes.make_graceful(err, "{destination} is a directory")
             sys.exit(ErrorCodes.IS_A_DIRECTORY.value)
         except PermissionError as err:
-            ErrorCodes.make_graceful(err)
+            ErrorCodes.make_graceful(err, "no write permission in {destination}")
             sys.exit(ErrorCodes.NO_WRITE_PERMISSION.value)
 
         return instance
 
     @staticmethod
-    def start_kazoo(host: str) -> KazooClient:
+    def start_kazoo(host: str, credentials: str) -> KazooClient:
         """Starts a connection to the Zookeeper client"""
         zk_client = KazooClient(hosts=host)
+        zk_client.add_auth_async("digest", credentials)
         try:
             event = zk_client.start_async()
             event.wait(timeout=10)
             logger.info("Zookeeper connection established")
         except KazooTimeoutError as err:
-            ErrorCodes.make_graceful(err)
+            ErrorCodes.make_graceful(err, "Zookeeper server timed out")
             sys.exit(ErrorCodes.KAZOO_TIMEOUT.value)
         return zk_client
 
@@ -103,7 +104,7 @@ class ZkTreeExport:
         try:
             data, _ = async_data.get()
         except NoNodeError as err:
-            ErrorCodes.make_graceful(err)
+            ErrorCodes.make_graceful(err, "No node found")
             sys.exit(ErrorCodes.NO_NODE.value)
         return data.decode("utf-8").replace("\n", "<br>")
 
